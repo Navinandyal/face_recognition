@@ -1,4 +1,4 @@
-# face rec and showing detected faces,identifying objects and alerting on criminals with SMS/MMS (Twilio)
+# face rec and showing detected faces,identifying objectsand alerting on criminals with whatsapp (Twilio) and image upload (Cloudinary)
 import sys
 import cv2
 import numpy as np
@@ -14,6 +14,8 @@ from insightface.app import FaceAnalysis
 from sklearn.metrics.pairwise import cosine_similarity
 from ultralytics import YOLO
 from twilio.rest import Client
+import cloudinary
+import cloudinary.uploader
 
 # =========================
 # CONFIG
@@ -46,48 +48,68 @@ IMAGE_HOST_URL = None  # e.g. "https://your-bucket.s3.amazonaws.com/faces/"
 TEMP_FACE_DIR = os.path.join(tempfile.gettempdir(), "hvr_alerts")
 os.makedirs(TEMP_FACE_DIR, exist_ok=True)
 
+# ✅ Cloudinary Config
+cloudinary.config(
+    cloud_name="dd4yq2pwq",
+    api_key="975589958339315",
+    api_secret="v8rSOxWL9f4B62fLpr0SgRX2Q5M"
+)
+
+
 # =========================
 # SMS / MMS FUNCTION (runs in a background thread)
 # =========================
 def send_alert(name: str, confidence: float, face_img: np.ndarray):
-    """Send MMS (with face image) or SMS to all recipients. Non-blocking."""
+
     def _send():
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         body = (
-            f":rotating_light: SECURITY ALERT :rotating_light:\n"
+            f"🚨 SECURITY ALERT 🚨\n"
             f"Criminal  : {name}\n"
             f"Confidence: {confidence:.1%}\n"
             f"Camera    : {CAMERA_ID} ({CAMERA_LOCATION})\n"
             f"Time      : {timestamp}"
         )
 
-        # --- Save face image and get a public URL if host is configured ---
         media_url = None
-        if IMAGE_HOST_URL and face_img is not None and face_img.size > 0:
+        local_path = None
+
+        try:
+            # Save temp image
             filename = f"{name}_{int(time.time())}.jpg"
             local_path = os.path.join(TEMP_FACE_DIR, filename)
-            cv2.imwrite(local_path, face_img)
-            media_url = IMAGE_HOST_URL.rstrip("/") + "/" + filename
-            # NOTE: You must separately upload `local_path` to your host.
-            # This URL tells Twilio where to fetch the image from.
+
+            face_img_small = cv2.resize(face_img, (300, 300))
+            cv2.imwrite(local_path, face_img_small)
+
+            # Upload to Cloudinary
+            upload_result = cloudinary.uploader.upload(local_path)
+            media_url = upload_result["secure_url"]
+
+        except Exception as e:
+            print("❌ Upload Error:", e)
 
         try:
             client = Client(ACCOUNT_SID, AUTH_TOKEN)
-            for number in ALERT_NUMBERS:
-                msg_params = dict(
-                    body=body,
-                    from_=TWILIO_NUMBER,
-                    to=number,
-                )
-                if media_url:
-                    msg_params["media_url"] = [media_url]
 
-                msg = client.messages.create(**msg_params)
-                print(f":white_check_mark: Alert sent to {number} | SID: {msg.sid}")
+            for number in ALERT_NUMBERS:
+                msg = client.messages.create(
+                    body=body,
+                    from_='whatsapp:+14155238886',
+                    to=f'whatsapp:{number}',
+                    media_url=[media_url] if media_url else None
+                )
+
+                print(f"✅ WhatsApp sent to {number} | SID: {msg.sid}")
 
         except Exception as e:
-            print(f":x: SMS Error: {e}")
+            print("❌ WhatsApp Error:", e)
+
+        finally:
+            # Delete temp image
+            if local_path and os.path.exists(local_path):
+                os.remove(local_path)
 
     threading.Thread(target=_send, daemon=True).start()
 
@@ -206,7 +228,8 @@ class CCTVApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HVR SYSTEM")
-        self.setGeometry(100, 100, 1200, 700)
+        # self.setGeometry(100, 100, 1200, 700)
+        self.showMaximized()
         self.setStyleSheet("background-color:#1e1e2f; color:white;")
         self.init_ui()
 

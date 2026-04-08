@@ -1,3 +1,4 @@
+# face rec and showing detected faces left side panel
 import sys
 import cv2
 import numpy as np

@@ -1,3 +1,4 @@
+# face rec and showing detected faces left side panel
 import sys
 import cv2
 import numpy as np
@@ -26,7 +27,8 @@ class VideoThread(QThread):
     face_signal = pyqtSignal(np.ndarray, str)
 
     def run(self):
-        cap = cv2.VideoCapture(0)  # 🔥 replace with RTSP later
+        cap = cv2.VideoCapture(0)  # 🔥 replace /with RTSP later
+        # cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
 
         while True:
             ret, frame = cap.read()
